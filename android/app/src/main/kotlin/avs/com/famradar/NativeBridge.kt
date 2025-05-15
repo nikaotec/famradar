@@ -11,14 +11,23 @@ import android.content.SharedPreferences
 
 class NativeBridge : MethodChannel.MethodCallHandler {
     private lateinit var context: Context
-    private lateinit var channel: MethodChannel
+    private lateinit var activity: MainActivity
+    private lateinit var storageChannel: MethodChannel
+    private lateinit var permissionsChannel: MethodChannel
     private lateinit var sharedPreferences: SharedPreferences
 
-    fun onAttachedToEngine(context: Context, flutterEngine: FlutterEngine) {
+    fun onAttachedToEngine(context: Context, activity: MainActivity, flutterEngine: FlutterEngine) {
         this.context = context
+        this.activity = activity
         sharedPreferences = context.getSharedPreferences("FamRadarPrefs", Context.MODE_PRIVATE)
-        channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "avs.com.famradar/storage")
-        channel.setMethodCallHandler(this)
+
+        // Initialize storage channel
+        storageChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "avs.com.famradar/storage")
+        storageChannel.setMethodCallHandler(this)
+
+        // Initialize permissions channel
+        permissionsChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "avs.com.famradar/permissions")
+        permissionsChannel.setMethodCallHandler(this)
     }
 
     private fun checkPermissions(): Boolean {
@@ -35,6 +44,7 @@ class NativeBridge : MethodChannel.MethodCallHandler {
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
+            // Storage channel methods
             "saveUserData" -> {
                 val userData = call.arguments as? Map<String, Any>
                 if (userData != null) {
@@ -92,12 +102,41 @@ class NativeBridge : MethodChannel.MethodCallHandler {
                 LocationForegroundService.stopService(context)
                 result.success(null)
             }
+            // Permissions channel methods
+            "hasAllLocationPermissions" -> {
+                result.success(LocationPermissionHelper.hasAllLocationPermissions(context))
+            }
+            "shouldShowPermissionRationale" -> {
+                result.success(LocationPermissionHelper.shouldShowPermissionRationale(activity))
+            }
+            "showPermissionRationaleDialog" -> {
+                LocationPermissionHelper.showPermissionRationaleDialog(activity, {
+                    result.success(null)
+                })
+            }
+            "requestForegroundLocationPermissions" -> {
+                LocationPermissionHelper.requestForegroundLocationPermissions(activity)
+                result.success(null)
+            }
+            "requestBackgroundLocationPermission" -> {
+                LocationPermissionHelper.requestBackgroundLocationPermission(activity)
+                result.success(null)
+            }
+            "requestNotificationPermission" -> {
+                LocationPermissionHelper.requestNotificationPermission(activity)
+                result.success(null)
+            }
+            "openAppSettings" -> {
+                LocationPermissionHelper.openAppSettings(activity)
+                result.success(null)
+            }
             else -> result.notImplemented()
         }
     }
 
     fun onDetachedFromEngine() {
-        channel.setMethodCallHandler(null)
+        storageChannel.setMethodCallHandler(null)
+        permissionsChannel.setMethodCallHandler(null)
     }
 
     companion object {

@@ -142,7 +142,7 @@ object LocationPermissionHelper {
             .show()
     }
 
-    private fun openAppSettings(activity: Activity) {
+    fun openAppSettings(activity: Activity) {
         Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
             data = Uri.fromParts("package", activity.packageName, null)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK

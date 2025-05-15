@@ -9,11 +9,12 @@ import org.webrtc.PeerConnection
 class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // Initialize NativeBridge for storage and permissions channels
         val nativeBridge = NativeBridge()
-        nativeBridge.onAttachedToEngine(applicationContext, flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "avs.com.famradar/storage").setMethodCallHandler { call, result ->
-            nativeBridge.onMethodCall(call, result)
-        }
+        nativeBridge.onAttachedToEngine(applicationContext, this, flutterEngine)
+
+        // Invitations channel
         val invitationManager = InvitationManager(applicationContext)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "avs.com.famradar/invitations").setMethodCallHandler { call, result ->
             when (call.method) {
@@ -49,6 +50,8 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        // WebRTC channel
         val webRTCManager = WebRTCManager(applicationContext)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "avs.com.famradar/webrtc_events").setMethodCallHandler { call, result ->
             when (call.method) {
@@ -86,9 +89,12 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        // Geofence channel
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "avs.com.famradar/geofence_events").setMethodCallHandler { _, _ ->
             // Handled by GeofenceBroadcastReceiver
         }
+
         // Initialize channels for services
         GeofenceBroadcastReceiver.channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "avs.com.famradar/geofence_events")
         LocationForegroundService.channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "avs.com.famradar/geofence_events")

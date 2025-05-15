@@ -1,5 +1,6 @@
 // lib/router.dart
 import 'package:famradar/modules/auth/screens/login_scree.dart';
+import 'package:famradar/modules/auth/screens/permission_screen.dart';
 import 'package:famradar/modules/history/scrreens/history_screen.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -21,7 +22,9 @@ final router = GoRouter(
       ),
       DI.createPermissionService(appProvider),
     );
+    final permissionService = DI.createPermissionService(appProvider);
     final user = await authService.getCurrentUser();
+
     if (user != null && state.uri.path == '/login') {
       return '/';
     }
@@ -29,6 +32,12 @@ final router = GoRouter(
         state.uri.path != '/login' &&
         state.uri.path != '/signup') {
       return '/login';
+    }
+    if (user != null && state.uri.path != '/permissions') {
+      final permissionsGranted = await permissionService.checkPermissions();
+      if (!permissionsGranted) {
+        return '/permissions';
+      }
     }
     return null;
   },
@@ -62,6 +71,15 @@ final router = GoRouter(
             ),
             DI.createPermissionService(appProvider),
           ),
+        );
+      },
+    ),
+    GoRoute(
+      path: '/permissions',
+      builder: (context, state) {
+        final appProvider = Provider.of<AppProvider>(context);
+        return PermissionScreen(
+          permissionService: DI.createPermissionService(appProvider),
         );
       },
     ),

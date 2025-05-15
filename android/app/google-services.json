@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "972820534014",
+    "project_id": "famradar-48401",
+    "storage_bucket": "famradar-48401.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:972820534014:android:be6a1a40c16a61d75ccbaf",
+        "android_client_info": {
+          "package_name": "avs.com.famradar"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBpN6v1aYYm7vYRK9_3Za3mk8gUKddSOCM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

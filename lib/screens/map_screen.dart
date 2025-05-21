@@ -1,16 +1,15 @@
-// lib/screens/map_screen.dart
-import 'package:cached_network_image/cached_network_image.dart';
+// lib/modules/map/screens/map_screen.dart
+import 'package:famradar/modules/auth/interfaces/auth_service_interface.dart';
 import 'package:famradar/modules/geofence/interfaces/geofenceP_service_interface.dart';
-import 'package:famradar/modules/geofence/models.dart/geofence_model.dart';
+import 'package:famradar/modules/webrtc/interfaces/webrtc_service_interface.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
-import '../modules/auth/interfaces/auth_service_interface.dart';
-import '../modules/webrtc/interfaces/webrtc_service_interface.dart';
-import '../interfaces/storage_service_interface.dart';
-import '../providers/app_provider.dart';
+import '../../../providers/app_provider.dart';
+import '../../../models/location_model.dart';
+import '../../interfaces/storage_service_interface.dart';
 
 class MapScreen extends StatefulWidget {
   final StorageServiceInterface storageService;
@@ -31,169 +30,185 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> {
+  static const platform = MethodChannel('avs.com.famradar/storage');
+  static const eventChannel = EventChannel('avs.com.famradar/geofence_events');
+  final _mapController = MapController();
+  LatLng? _initialPosition; // Will be set to user's location
+
   @override
   void initState() {
     super.initState();
-    widget.storageService.startLocationService();
+    _setInitialPosition();
+    _startLocationService();
+    _listenForEvents();
+  }
+
+  void _setInitialPosition() {
+    final user = context.read<AppProvider>().currentUser;
+    final userLocations = context.read<AppProvider>().userLocations;
+    if (user != null && userLocations.containsKey(user.id)) {
+      final userLocation = userLocations[user.id]!;
+      _initialPosition = LatLng(userLocation.position.latitude, userLocation.position.longitude);
+    } else {
+      _initialPosition =
+          LatLng(-8.0395, -34.9466); // Fallback: Recife, based on logs
+    }
+  }
+
+  Future<void> _startLocationService() async {
+    try {
+      final userId = context.read<AppProvider>().currentUser?.id;
+      if (userId != null) {
+        await platform.invokeMethod('startLocationService', {'userId': userId});
+        print('Location service started for user: $userId');
+      } else {
+        context.read<AppProvider>().showError('User not logged in');
+      }
+    } catch (e) {
+      context
+          .read<AppProvider>()
+          .showError('Error starting location service: $e');
+    }
+  }
+
+  void _listenForEvents() {
+    eventChannel.receiveBroadcastStream().listen(
+      (event) {
+        try {
+          if (event is Map) {
+            final map = event.cast<String, dynamic>();
+            if (map.containsKey('latitude') &&
+                map.containsKey('longitude') &&
+                map['latitude'] is double &&
+                map['longitude'] is double &&
+                map['timestamp'] is int) {
+              context.read<AppProvider>().handleLocationUpdate(
+                    userId: (map['userId'] as String?) ?? '',
+                    latitude: map['latitude'] as double,
+                    longitude: map['longitude'] as double,
+                    timestamp: map['timestamp'] as int,
+                  );
+              print(
+                  'Received location update: ${map['latitude']}, ${map['longitude']}');
+            } else if (map.containsKey('error')) {
+              context.read<AppProvider>().showError(map['error'] as String);
+            } else {
+              print('Invalid event format: $map');
+            }
+          } else {
+            print('Event is not a Map: $event');
+          }
+        } catch (e) {
+          context.read<AppProvider>().showError('Error processing event: $e');
+        }
+      },
+      onError: (error) {
+        context.read<AppProvider>().showError('Event channel error: $error');
+      },
+    );
   }
 
   @override
   void dispose() {
-    widget.storageService.stopLocationService();
+    _mapController.dispose();
+    platform.invokeMethod('stopLocationService').catchError((e) {
+      print('Error stopping location service: $e');
+    });
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<AppProvider>(
-      builder: (context, appProvider, child) {
-        return Scaffold(
-          appBar: AppBar(
-            title: const Text('FamRadar'),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.chat),
-                onPressed: () => context.go('/chat/test_family'),
+    final user = context.watch<AppProvider>().currentUser;
+    final userLocations = context.watch<AppProvider>().userLocations;
+
+    // Get the current user's location
+    final userLocation = user != null ? userLocations[user.id] : null;
+    final markers = userLocation != null
+        ? [
+            Marker(
+              point: LatLng(
+                  userLocation.position.latitude, userLocation.position.longitude),
+              width: 50,
+              height: 50,
+              child: CircleAvatar(
+                radius: 25,
+                backgroundImage: user?.photoUrl != null
+                    ? NetworkImage(user!.photoUrl!)
+                    : AssetImage('assets/images/default_avatar.png')
+                        as ImageProvider,
+                backgroundColor: Colors.blue.shade100,
               ),
-              IconButton(
-                icon: const Icon(Icons.history),
-                onPressed:
-                    () => context.go(
-                      '/history/${appProvider.currentUser?.id ?? ""}',
-                    ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.logout),
-                onPressed: () async {
-                  await widget.authService.signOut();
-                  context.go('/login');
-                },
-              ),
-            ],
+            ),
+          ]
+        : <Marker>[];
+
+    // Update map camera if location changes
+    if (userLocation != null) {
+      _mapController.move(
+        LatLng(userLocation.position.latitude, userLocation.position.longitude),
+        14,
+      );
+    }
+
+    return Scaffold(
+      body: SafeArea(
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Colors.blue.shade50, Colors.white],
+            ),
           ),
-          body: Stack(
+          child: Stack(
             children: [
               FlutterMap(
+                mapController: _mapController,
                 options: MapOptions(
-                  initialCenter:
-                      appProvider.userLocations.isNotEmpty
-                          ? appProvider.userLocations.values.first.position
-                          : const LatLng(0, 0),
-                  initialZoom: 13,
+                  initialCenter: _initialPosition ?? LatLng(-8.0395, -34.9466),
+                  initialZoom: 14,
                 ),
                 children: [
                   TileLayer(
                     urlTemplate:
-                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        'https://api.maptiler.com/maps/streets/{z}/{x}/{y}.png?key=YOUR_MAPTILER_API_KEY',
                     userAgentPackageName: 'avs.com.famradar',
                   ),
-                  MarkerLayer(
-                    markers:
-                        appProvider.familyMembers.entries
-                            .where(
-                              (entry) => appProvider.userLocations.containsKey(
-                                entry.key,
-                              ),
-                            )
-                            .map(
-                              (entry) => Marker(
-                                point:
-                                    appProvider
-                                        .userLocations[entry.key]!
-                                        .position,
-                                width: 50,
-                                height: 50,
-                                child: GestureDetector(
-                                  onTap:
-                                      () => ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(entry.value.name),
-                                        ),
-                                      ),
-                                  child: CircleAvatar(
-                                    backgroundImage:
-                                        entry.value.photoUrl != null
-                                            ? CachedNetworkImageProvider(
-                                              entry.value.photoUrl!,
-                                            )
-                                            : null,
-                                    child:
-                                        entry.value.photoUrl == null
-                                            ? Text(entry.value.name[0])
-                                            : null,
-                                  ),
-                                ),
-                              ),
-                            )
-                            .toList(),
-                  ),
-                  CircleLayer(
-                    circles:
-                        appProvider.geofences.entries
-                            .map(
-                              (entry) => CircleMarker(
-                                point: LatLng(
-                                  entry.value.latitude,
-                                  entry.value.longitude,
-                                ),
-                                radius: entry.value.radius,
-                                color: Colors.green.withOpacity(0.3),
-                                borderColor: Colors.green,
-                                borderStrokeWidth: 2,
-                              ),
-                            )
-                            .toList(),
-                  ),
+                  MarkerLayer(markers: markers),
                 ],
               ),
-              if (appProvider.errorMessage != null)
-                Positioned(
-                  bottom: 16,
-                  left: 16,
-                  right: 16,
-                  child: Card(
-                    color: Colors.red,
-                    child: Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              appProvider.errorMessage!,
-                              style: const TextStyle(color: Colors.white),
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.close, color: Colors.white),
-                            onPressed: appProvider.clearError,
-                          ),
-                        ],
+              Positioned(
+                top: 16,
+                left: 16,
+                right: 16,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.8),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.grey.withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
                       ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.all(12),
+                  child: Text(
+                    'Welcome, ${user?.name ?? 'User'}! ${userLocation != null ? 'Lat: ${userLocation.position.latitude.toStringAsFixed(4)}, Lng: ${userLocation.position.longitude.toStringAsFixed(4)}' : 'Fetching location...'}',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.blue.shade900,
                     ),
                   ),
                 ),
+              ),
             ],
           ),
-          floatingActionButton: FloatingActionButton(
-            onPressed: () async {
-              final geofence = GeofenceModel(
-                id: 'geofence_${DateTime.now().millisecondsSinceEpoch}',
-                name: 'Test Location',
-                latitude: 0.0,
-                longitude: 0.0,
-                radius: 100.0,
-              );
-              await widget.geofenceService.addGeofence(geofence);
-              if (appProvider.currentUser != null) {
-                await widget.webrtcService.startWebRTCConnection('test_user');
-              }
-            },
-            child: const Icon(Icons.add_location),
-          ),
-        );
-      },
+        ),
+      ),
     );
   }
 }

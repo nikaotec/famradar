@@ -10,7 +10,7 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        // Initialize NativeBridge for storage and permissions channels
+        // Initialize NativeBridge for storage channel
         val nativeBridge = NativeBridge()
         nativeBridge.onAttachedToEngine(applicationContext, this, flutterEngine)
 

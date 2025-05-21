@@ -59,6 +59,8 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-auth-ktx")
     implementation("io.flutter:flutter_embedding_debug:1.0.0-cf56914b326edb0ccb123ffdc60f00060bd513fa")
+    implementation("com.google.firebase:firebase-appcheck-playintegrity:18.0.0")
+
 
     // Enforce a consistent version of androidx.databinding
     implementation("androidx.databinding:databinding-common:8.10.0")

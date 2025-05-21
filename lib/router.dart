@@ -1,137 +1,100 @@
 // lib/router.dart
-import 'package:famradar/modules/auth/screens/login_scree.dart';
+import 'dart:io';
+
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:famradar/di/di.dart' show DI;
+import 'package:famradar/modules/auth/screens/login_screen.dart';
 import 'package:famradar/modules/auth/screens/permission_screen.dart';
-import 'package:famradar/modules/history/scrreens/history_screen.dart';
+import 'package:famradar/modules/auth/screens/signup_screen.dart';
+import 'package:famradar/modules/auth/screens/storage_service.dart';
+import 'package:famradar/providers/app_provider.dart';
+import 'package:famradar/screens/map_screen.dart';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
-import '../di/di.dart';
-import '../modules/auth/screens/signup_screen.dart';
-import '../modules/chat/screens/chat_screen.dart';
-import '../providers/app_provider.dart';
-import '../screens/map_screen.dart';
 
-final router = GoRouter(
+final GoRouter router = GoRouter(
   initialLocation: '/login',
-  redirect: (context, state) async {
-    final appProvider = Provider.of<AppProvider>(context, listen: false);
-    final authService = DI.createAuthService(
-      appProvider,
-      DI.createStorageService(
-        appProvider,
-        DI.createPermissionService(appProvider),
-      ),
-      DI.createPermissionService(appProvider),
-    );
-    final permissionService = DI.createPermissionService(appProvider);
-    final user = await authService.getCurrentUser();
-
-    if (user != null && state.uri.path == '/login') {
-      return '/';
-    }
-    if (user == null &&
-        state.uri.path != '/login' &&
-        state.uri.path != '/signup') {
-      return '/login';
-    }
-    if (user != null && state.uri.path != '/permissions') {
-      final permissionsGranted = await permissionService.checkPermissions();
-      if (!permissionsGranted) {
-        return '/permissions';
-      }
-    }
-    return null;
-  },
   routes: [
     GoRoute(
       path: '/login',
-      builder: (context, state) {
-        final appProvider = Provider.of<AppProvider>(context);
-        return LoginScreen(
-          authService: DI.createAuthService(
-            appProvider,
-            DI.createStorageService(
-              appProvider,
-              DI.createPermissionService(appProvider),
-            ),
-            DI.createPermissionService(appProvider),
-          ),
-        );
-      },
+      builder: (context, state) => const LoginScreen(),
     ),
     GoRoute(
       path: '/signup',
-      builder: (context, state) {
-        final appProvider = Provider.of<AppProvider>(context);
-        return SignupScreen(
-          authService: DI.createAuthService(
-            appProvider,
-            DI.createStorageService(
-              appProvider,
-              DI.createPermissionService(appProvider),
-            ),
-            DI.createPermissionService(appProvider),
-          ),
-        );
-      },
+      builder: (context, state) => const SignupScreen(),
     ),
     GoRoute(
       path: '/permissions',
       builder: (context, state) {
-        final appProvider = Provider.of<AppProvider>(context);
+        final appProvider = Provider.of<AppProvider>(context, listen: false);
+        final userData = state.extra as Map<String, dynamic>?;
         return PermissionScreen(
-          permissionService: DI.createPermissionService(appProvider),
+          storageService: DI.createStorageService(
+            appProvider,
+            DI.createPermissionService(appProvider),
+          ),
+          userData: userData,
         );
       },
     ),
     GoRoute(
       path: '/',
       builder: (context, state) {
-        final appProvider = Provider.of<AppProvider>(context);
+        final appProvider = Provider.of<AppProvider>(context, listen: false);
         final permissionService = DI.createPermissionService(appProvider);
-        final storageService = DI.createStorageService(
-          appProvider,
-          permissionService,
-        );
+        final storageService =
+            DI.createStorageService(appProvider, permissionService);
         return MapScreen(
           storageService: storageService,
-          geofenceService: DI.createGeofenceService(
-            appProvider,
-            permissionService,
-          ),
+          geofenceService:
+              DI.createGeofenceService(appProvider, permissionService),
           webrtcService: DI.createWebRTCService(
             appProvider,
             DI.createSignalingService(appProvider),
             permissionService,
           ),
           authService: DI.createAuthService(
-            appProvider,
-            storageService,
-            permissionService,
-          ),
-        );
-      },
-    ),
-    GoRoute(
-      path: '/chat/:familyId',
-      builder: (context, state) {
-        final appProvider = Provider.of<AppProvider>(context);
-        final familyId = state.pathParameters['familyId']!;
-        return ChatScreen(
-          chatService: DI.createChatService(appProvider),
-          familyId: familyId,
-        );
-      },
-    ),
-    GoRoute(
-      path: '/history/:userId',
-      builder: (context, state) {
-        final appProvider = Provider.of<AppProvider>(context);
-        final userId = state.pathParameters['userId']!;
-        return HistoryScreen(
-          historyService: DI.createHistoryService(appProvider),
-          userId: userId,
+              appProvider, storageService, permissionService),
         );
       },
     ),
   ],
+  redirect: (BuildContext context, GoRouterState state) async {
+    final requiredPermissions = Platform.isAndroid
+        ? [
+            Permission.location,
+            if (await DeviceInfoPlugin()
+                .androidInfo
+                .then((info) => info.version.sdkInt >= 29))
+              Permission.locationAlways,
+            if (await DeviceInfoPlugin()
+                .androidInfo
+                .then((info) => info.version.sdkInt >= 33))
+              Permission.notification,
+            if (await DeviceInfoPlugin()
+                .androidInfo
+                .then((info) => info.version.sdkInt < 29))
+              Permission.storage,
+          ]
+        : [
+            Permission.locationWhenInUse,
+            Permission.locationAlways,
+            Permission.notification,
+          ];
+
+    final allPermissionsGranted = await Future.wait(
+      requiredPermissions.map((p) => p.status),
+    ).then((statuses) => statuses.every((s) => s.isGranted));
+
+    if (!allPermissionsGranted &&
+        state.uri.toString() != '/permissions' &&
+        state.uri.toString() != '/login' &&
+        state.uri.toString() != '/signup') {
+      return '/permissions';
+    }
+
+    return null;
+  },
 );

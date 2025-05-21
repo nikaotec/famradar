@@ -5,13 +5,12 @@ import 'package:famradar/models/location_model.dart';
 import 'package:famradar/modules/geofence/interfaces/geofenceP_service_interface.dart';
 import 'package:famradar/modules/geofence/models.dart/geofence_model.dart';
 import 'package:famradar/providers/app_provider.dart';
-import 'package:flutter/services.dart';// Fixed import
+import 'package:flutter/services.dart';
 
 class GeofenceService implements GeofenceServiceInterface {
   static const _geofenceChannel = MethodChannel('avs.com.famradar/geofence');
-  static const _eventsChannel = MethodChannel(
-    'avs.com.famradar/geofence_events',
-  );
+  static const _eventsChannel =
+      MethodChannel('avs.com.famradar/geofence_events');
   final AppProvider _appProvider;
   final FirebaseFirestore _firestore;
   final PermissionServiceInterface _permissionService;
@@ -20,15 +19,29 @@ class GeofenceService implements GeofenceServiceInterface {
     required AppProvider appProvider,
     required PermissionServiceInterface permissionService,
     FirebaseFirestore? firestore,
-  }) : _appProvider = appProvider,
-       _permissionService = permissionService,
-       _firestore = firestore ?? FirebaseFirestore.instance {
+  })  : _appProvider = appProvider,
+        _permissionService = permissionService,
+        _firestore = firestore ?? FirebaseFirestore.instance {
     _eventsChannel.setMethodCallHandler(_handleEvent);
   }
 
   Future<void> _handleEvent(MethodCall call) async {
     try {
       switch (call.method) {
+        case 'onLocationUpdate':
+          final args = call.arguments as Map?;
+          if (args != null &&
+              args['userId'] is String? &&
+              args['latitude'] is double &&
+              args['longitude'] is double &&
+              args['timestamp'] is int) {
+            _appProvider.updateUserLocation(
+              LocationModel.fromMap(args.cast<String, dynamic>()),
+            );
+          } else {
+            _appProvider.showError('Invalid location update arguments');
+          }
+          break;
         case 'onGeofenceEvent':
           final args = call.arguments as Map?;
           if (args != null) {
@@ -43,13 +56,11 @@ class GeofenceService implements GeofenceServiceInterface {
                 userId: userId,
                 timestamp: timestamp,
               );
-            } else if (args['latitude'] != null && args['longitude'] != null) {
-              _appProvider.updateUserLocation(
-                LocationModel.fromMap(args.cast<String, dynamic>()),
-              );
             } else {
               _appProvider.showError('Invalid geofence event arguments');
             }
+          } else {
+            _appProvider.showError('Invalid geofence event arguments');
           }
           break;
         case 'onError':
@@ -65,7 +76,7 @@ class GeofenceService implements GeofenceServiceInterface {
           _appProvider.showError('Unhandled native event: ${call.method}');
       }
     } catch (e) {
-      _appProvider.showError('Error processing geofence event: $e');
+      _appProvider.showError('Error processing event: $e');
     }
   }
 
@@ -92,10 +103,9 @@ class GeofenceService implements GeofenceServiceInterface {
   Future<List<GeofenceModel>> getGeofences() async {
     try {
       final snapshot = await _firestore.collection('geofences').get();
-      final geofences =
-          snapshot.docs
-              .map((doc) => GeofenceModel.fromMap(doc.data()))
-              .toList();
+      final geofences = snapshot.docs
+          .map((doc) => GeofenceModel.fromMap(doc.data()))
+          .toList();
       return geofences;
     } catch (e) {
       _appProvider.showError('Error fetching geofences: $e');

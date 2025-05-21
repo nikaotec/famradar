@@ -25,56 +25,64 @@ class DI {
 
   static PermissionServiceInterface createPermissionService(
     AppProvider appProvider,
-  ) => PermissionService(appProvider: appProvider);
+  ) =>
+      PermissionService(appProvider: appProvider);
 
   static StorageServiceInterface createStorageService(
     AppProvider appProvider,
     PermissionServiceInterface permissionService,
-  ) => NativeStorageService(
-    appProvider: appProvider,
-    permissionService: permissionService,
-  );
+  ) =>
+      NativeStorageService(
+        appProvider: appProvider,
+        permissionService: permissionService,
+      );
 
   static AuthServiceInterface createAuthService(
     AppProvider appProvider,
     StorageServiceInterface storageService,
     PermissionServiceInterface permissionService,
-  ) => AuthService(
-    appProvider: appProvider,
-    storageService: storageService,
-    permissionService: permissionService,
-  );
+  ) =>
+      AuthService(
+        appProvider: appProvider,
+        storageService: storageService,
+        permissionService: permissionService,
+      );
 
   static GeofenceServiceInterface createGeofenceService(
     AppProvider appProvider,
     PermissionServiceInterface permissionService,
-  ) => GeofenceService(
-    appProvider: appProvider,
-    permissionService: permissionService,
-  );
+  ) =>
+      GeofenceService(
+        appProvider: appProvider,
+        permissionService: permissionService,
+      );
 
   static SignalingServiceInterface createSignalingService(
     AppProvider appProvider,
-  ) => SignalingService(appProvider: appProvider);
+  ) =>
+      SignalingService(appProvider: appProvider);
 
   static WebRTCServiceInterface createWebRTCService(
     AppProvider appProvider,
     SignalingServiceInterface signalingService,
     PermissionServiceInterface permissionService,
-  ) => WebRTCService(
-    appProvider: appProvider,
-    signalingService: signalingService,
-    permissionService: permissionService,
-  );
+  ) =>
+      WebRTCService(
+        appProvider: appProvider,
+        signalingService: signalingService,
+        permissionService: permissionService,
+      );
 
   static ChatServiceInterface createChatService(AppProvider appProvider) =>
       ChatService(appProvider: appProvider);
 
   static HistoryServiceInterface createHistoryService(
     AppProvider appProvider,
-  ) => HistoryService(appProvider: appProvider);
+  ) =>
+      HistoryService(appProvider: appProvider);
 
   static InvitationServiceInterface createInvitationService(
     AppProvider appProvider,
-  ) => InvitationService(appProvider: appProvider);
+  ) =>
+      InvitationService(appProvider: appProvider);
 }

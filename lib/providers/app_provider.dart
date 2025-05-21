@@ -1,6 +1,7 @@
 // lib/providers/app_provider.dart
 import 'package:famradar/modules/geofence/models.dart/geofence_model.dart';
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 import '../models/user_model.dart';
 import '../models/location_model.dart';
 import '../modules/webrtc/models/ice_candidate_model.dart';
@@ -60,7 +61,21 @@ class AppProvider with ChangeNotifier {
     notifyListeners();
   }
 
-    void handleInvitationEvent(Map<String, dynamic> event) {
+  void handleLocationUpdate({
+    required String userId,
+    required double latitude,
+    required double longitude,
+    required int timestamp,
+  }) {
+    final location = LocationModel(
+      userId: userId,
+      position: LatLng(latitude, longitude),
+      timestamp: timestamp,
+    );
+    updateUserLocation(location);
+  }
+
+  void handleInvitationEvent(Map<String, dynamic> event) {
     // Handle invitation events (e.g., sent, accepted, rejected)
     notifyListeners();
   }

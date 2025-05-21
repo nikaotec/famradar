@@ -1,38 +1,35 @@
-// lib/modules/signup/screens/signup_screen.dart
+// lib/modules/login/screens/login_screen.dart
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../../providers/app_provider.dart';
 
-
-class SignupScreen extends StatefulWidget {
-  const SignupScreen({super.key});
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
 
   @override
-  State<SignupScreen> createState() => _SignupScreenState();
+  State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _SignupScreenState extends State<SignupScreen> {
-  final _nameController = TextEditingController();
+class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
-  final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
 
-  Future<void> _signup() async {
+  Future<void> _login() async {
     setState(() => _isLoading = true);
     try {
-      // Simular cadastro (substituir por autenticação real)
+      // Simular login (substituir por autenticação real)
       final userData = {
-        'id': 'user${DateTime.now().millisecondsSinceEpoch}',
-        'name': _nameController.text,
+        'id': 'user123',
         'email': _emailController.text,
-        'phone': _phoneController.text,
+        'name': 'John Doe',
+        'phone': '1234567890',
         'photoUrl': '',
       };
       context.go('/permissions', extra: userData);
     } catch (e) {
-      context.read<AppProvider>().showError('Falha no cadastro: $e');
+      context.read<AppProvider>().showError('Falha no login: $e');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -52,75 +49,60 @@ class _SignupScreenState extends State<SignupScreen> {
           ),
           child: Padding(
             padding: const EdgeInsets.all(24.0),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.family_restroom,
-                      size: 80, color: Colors.blue.shade700),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Junte-se ao FamRadar',
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue.shade900,
-                    ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.family_restroom,
+                    size: 80, color: Colors.blue.shade700),
+                const SizedBox(height: 16),
+                Text(
+                  'FamRadar',
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue.shade900,
                   ),
-                  const SizedBox(height: 32),
-                  _buildTextField(
-                    controller: _nameController,
-                    label: 'Nome',
-                    icon: Icons.person,
+                ),
+                const SizedBox(height: 32),
+                _buildTextField(
+                  controller: _emailController,
+                  label: 'Email',
+                  icon: Icons.email,
+                  keyboardType: TextInputType.emailAddress,
+                ),
+                const SizedBox(height: 16),
+                _buildTextField(
+                  controller: _passwordController,
+                  label: 'Senha',
+                  icon: Icons.lock,
+                  obscureText: true,
+                ),
+                const SizedBox(height: 24),
+                _buildButton(
+                  onPressed: _isLoading ? null : _login,
+                  label: 'Entrar',
+                  color: Colors.blue.shade700,
+                ),
+                const SizedBox(height: 16),
+                TextButton(
+                  onPressed: () => context.go('/signup'),
+                  child: Text(
+                    'Não tem conta? Cadastre-se',
+                    style: TextStyle(color: Colors.blue.shade700),
                   ),
-                  const SizedBox(height: 16),
-                  _buildTextField(
-                    controller: _emailController,
-                    label: 'Email',
-                    icon: Icons.email,
-                    keyboardType: TextInputType.emailAddress,
+                ),
+                if (_isLoading)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 16),
+                    child: CircularProgressIndicator(),
                   ),
-                  const SizedBox(height: 16),
-                  _buildTextField(
-                    controller: _phoneController,
-                    label: 'Telefone',
-                    icon: Icons.phone,
-                    keyboardType: TextInputType.phone,
+                if (context.read<AppProvider>().errorMessage != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: _buildErrorCard(
+                        context.read<AppProvider>().errorMessage!),
                   ),
-                  const SizedBox(height: 16),
-                  _buildTextField(
-                    controller: _passwordController,
-                    label: 'Senha',
-                    icon: Icons.lock,
-                    obscureText: true,
-                  ),
-                  const SizedBox(height: 24),
-                  _buildButton(
-                    onPressed: _isLoading ? null : _signup,
-                    label: 'Cadastrar',
-                    color: Colors.blue.shade700,
-                  ),
-                  const SizedBox(height: 16),
-                  TextButton(
-                    onPressed: () => context.go('/login'),
-                    child: Text(
-                      'Já tem conta? Entre',
-                      style: TextStyle(color: Colors.blue.shade700),
-                    ),
-                  ),
-                  if (_isLoading)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 16),
-                      child: CircularProgressIndicator(),
-                    ),
-                  if (context.read<AppProvider>().errorMessage != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 16),
-                      child: _buildErrorCard(
-                          context.read<AppProvider>().errorMessage!),
-                    ),
-                ],
-              ),
+              ],
             ),
           ),
         ),

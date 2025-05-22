@@ -1,4 +1,3 @@
-// lib/modules/map/screens/map_screen.dart
 import 'package:famradar/modules/auth/interfaces/auth_service_interface.dart';
 import 'package:famradar/modules/geofence/interfaces/geofenceP_service_interface.dart';
 import 'package:famradar/modules/webrtc/interfaces/webrtc_service_interface.dart';
@@ -10,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../../../providers/app_provider.dart';
 import '../../../models/location_model.dart';
 import '../../interfaces/storage_service_interface.dart';
+import 'dart:async';
 
 class MapScreen extends StatefulWidget {
   final StorageServiceInterface storageService;
@@ -31,13 +31,15 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
   static const platform = MethodChannel('avs.com.famradar/storage');
-  static const eventChannel = EventChannel('avs.com.famradar/geofence_events');
+  static const eventChannel = EventChannel('avs.com.famradar/location_events');
   final _mapController = MapController();
-  LatLng? _initialPosition; // Will be set to user's location
+  LatLng? _initialPosition;
+  StreamSubscription<dynamic>? _eventSubscription;
 
   @override
   void initState() {
     super.initState();
+    print('MapScreen initState called');
     _setInitialPosition();
     _startLocationService();
     _listenForEvents();
@@ -49,9 +51,30 @@ class _MapScreenState extends State<MapScreen> {
     if (user != null && userLocations.containsKey(user.id)) {
       final userLocation = userLocations[user.id]!;
       _initialPosition = LatLng(userLocation.position.latitude, userLocation.position.longitude);
+      print('Initial position set from AppProvider: ${_initialPosition.toString()}');
     } else {
-      _initialPosition =
-          LatLng(-8.0395, -34.9466); // Fallback: Recife, based on logs
+      // Fallback para última localização conhecida via NativeBridge
+      platform.invokeMethod('getUserData').then((userData) {
+        if (userData is Map && userData.containsKey('lastLatitude') && userData.containsKey('lastLongitude')) {
+          setState(() {
+            _initialPosition = LatLng(
+              (userData['lastLatitude'] as num).toDouble(),
+              (userData['lastLongitude'] as num).toDouble(),
+            );
+            print('Initial position set from NativeBridge: ${_initialPosition.toString()}');
+          });
+        } else {
+          setState(() {
+            _initialPosition = LatLng(0.0, 0.0);
+            print('Initial position set to fallback: (0.0, 0.0)');
+          });
+        }
+      }).catchError((e) {
+        print('Error fetching last location: $e');
+        setState(() {
+          _initialPosition = LatLng(0.0, 0.0);
+        });
+      });
     }
   }
 
@@ -62,54 +85,79 @@ class _MapScreenState extends State<MapScreen> {
         await platform.invokeMethod('startLocationService', {'userId': userId});
         print('Location service started for user: $userId');
       } else {
-        context.read<AppProvider>().showError('User not logged in');
+        print('No user logged in');
+        context.read<AppProvider>().showError('Usuário não logado');
       }
-    } catch (e) {
-      context
-          .read<AppProvider>()
-          .showError('Error starting location service: $e');
+    } on PlatformException catch (e) {
+      print('Error starting location service: ${e.message}');
+      context.read<AppProvider>().showError('Erro ao iniciar serviço de localização: ${e.message}');
     }
   }
 
   void _listenForEvents() {
-    eventChannel.receiveBroadcastStream().listen(
-      (event) {
-        try {
-          if (event is Map) {
-            final map = event.cast<String, dynamic>();
-            if (map.containsKey('latitude') &&
-                map.containsKey('longitude') &&
-                map['latitude'] is double &&
-                map['longitude'] is double &&
-                map['timestamp'] is int) {
-              context.read<AppProvider>().handleLocationUpdate(
-                    userId: (map['userId'] as String?) ?? '',
-                    latitude: map['latitude'] as double,
-                    longitude: map['longitude'] as double,
-                    timestamp: map['timestamp'] as int,
-                  );
-              print(
-                  'Received location update: ${map['latitude']}, ${map['longitude']}');
-            } else if (map.containsKey('error')) {
-              context.read<AppProvider>().showError(map['error'] as String);
+    // Atrasar para garantir que o serviço esteja ativo
+    Future.delayed(Duration(seconds: 2), () {
+      print('Setting up EventChannel listener');
+      _eventSubscription = eventChannel.receiveBroadcastStream().listen(
+        (event) {
+          print('Event received: $event');
+          try {
+            if (event is Map<dynamic, dynamic>) {
+              final map = event.cast<String, dynamic>();
+              if (map.containsKey('latitude') &&
+                  map.containsKey('longitude') &&
+                  map['latitude'] is double &&
+                  map['longitude'] is double &&
+                  map['timestamp'] is int) {
+                context.read<AppProvider>().handleLocationUpdate(
+                      userId: (map['userId'] as String?) ?? '',
+                      latitude: map['latitude'] as double,
+                      longitude: map['longitude'] as double,
+                      timestamp: map['timestamp'] as int,
+                    );
+                print('Location update received: ${map['latitude']}, ${map['longitude']}');
+                // Atualizar última localização no SharedPreferences
+                platform.invokeMethod('saveUserData', {
+                  'lastLatitude': map['latitude'],
+                  'lastLongitude': map['longitude'],
+                });
+              } else if (map.containsKey('type') && map.containsKey('geofenceId')) {
+                context.read<AppProvider>().handleGeofenceEvent(
+                      type: map['type'] as String,
+                      geofenceId: map['geofenceId'] as String,
+                      userId: map['userId'] as String?,
+                      timestamp: (map['timestamp'] as num).toInt(),
+                    );
+                print('Geofence event received: ${map['type']}, ${map['geofenceId']}');
+              } else if (map.containsKey('errorMessage')) {
+                print('Error event received: ${map['errorMessage']}');
+                context.read<AppProvider>().showError(map['errorMessage'] as String);
+              } else {
+                print('Invalid event format: $map');
+              }
             } else {
-              print('Invalid event format: $map');
+              print('Event is not a Map: $event');
             }
-          } else {
-            print('Event is not a Map: $event');
+          } catch (e, stackTrace) {
+            print('Error processing event: $e\n$stackTrace');
+            context.read<AppProvider>().showError('Erro ao processar atualização: $e');
           }
-        } catch (e) {
-          context.read<AppProvider>().showError('Error processing event: $e');
-        }
-      },
-      onError: (error) {
-        context.read<AppProvider>().showError('Event channel error: $error');
-      },
-    );
+        },
+        onError: (error, stackTrace) {
+          print('EventChannel error: $error\n$stackTrace');
+          context.read<AppProvider>().showError('Erro no canal de eventos: $error');
+        },
+        onDone: () {
+          print('EventChannel stream closed');
+        },
+      );
+    });
   }
 
   @override
   void dispose() {
+    print('MapScreen dispose called');
+    _eventSubscription?.cancel();
     _mapController.dispose();
     platform.invokeMethod('stopLocationService').catchError((e) {
       print('Error stopping location service: $e');
@@ -122,28 +170,26 @@ class _MapScreenState extends State<MapScreen> {
     final user = context.watch<AppProvider>().currentUser;
     final userLocations = context.watch<AppProvider>().userLocations;
 
-    // Get the current user's location
+    // Obter localização do usuário atual
     final userLocation = user != null ? userLocations[user.id] : null;
     final markers = userLocation != null
         ? [
             Marker(
-              point: LatLng(
-                  userLocation.position.latitude, userLocation.position.longitude),
+              point: LatLng(userLocation.position.latitude, userLocation.position.longitude),
               width: 50,
               height: 50,
               child: CircleAvatar(
                 radius: 25,
                 backgroundImage: user?.photoUrl != null
                     ? NetworkImage(user!.photoUrl!)
-                    : AssetImage('assets/images/default_avatar.png')
-                        as ImageProvider,
+                    : const AssetImage('assets/images/default_avatar.png') as ImageProvider,
                 backgroundColor: Colors.blue.shade100,
               ),
             ),
           ]
         : <Marker>[];
 
-    // Update map camera if location changes
+    // Atualizar câmera do mapa se a localização mudar
     if (userLocation != null) {
       _mapController.move(
         LatLng(userLocation.position.latitude, userLocation.position.longitude),
@@ -166,14 +212,16 @@ class _MapScreenState extends State<MapScreen> {
               FlutterMap(
                 mapController: _mapController,
                 options: MapOptions(
-                  initialCenter: _initialPosition ?? LatLng(-8.0395, -34.9466),
+                  initialCenter: _initialPosition ?? LatLng(0.0, 0.0),
                   initialZoom: 14,
                 ),
                 children: [
                   TileLayer(
-                    urlTemplate:
-                        'https://api.maptiler.com/maps/streets/{z}/{x}/{y}.png?key=YOUR_MAPTILER_API_KEY',
+                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                     userAgentPackageName: 'avs.com.famradar',
+                    errorTileCallback: (tile, error, stackTrace) {
+                      print('Tile loading error: $error\n$stackTrace');
+                    },
                   ),
                   MarkerLayer(markers: markers),
                 ],
@@ -196,7 +244,7 @@ class _MapScreenState extends State<MapScreen> {
                   ),
                   padding: const EdgeInsets.all(12),
                   child: Text(
-                    'Welcome, ${user?.name ?? 'User'}! ${userLocation != null ? 'Lat: ${userLocation.position.latitude.toStringAsFixed(4)}, Lng: ${userLocation.position.longitude.toStringAsFixed(4)}' : 'Fetching location...'}',
+                    'Bem-vindo, ${user?.name ?? 'Usuário'}! ${userLocation != null ? 'Lat: ${userLocation.position.latitude.toStringAsFixed(4)}, Lng: ${userLocation.position.longitude.toStringAsFixed(4)}' : 'Obtendo localização...'}',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,

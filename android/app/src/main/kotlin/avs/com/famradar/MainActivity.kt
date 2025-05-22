@@ -1,20 +1,46 @@
-// android/app/src/main/kotlin/avs/com/famradar/MainActivity.kt
 package avs.com.famradar
 
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.embedding.engine.FlutterEngineCache
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import org.webrtc.PeerConnection
+import android.util.Log
 
 class MainActivity : FlutterActivity() {
+    companion object {
+        private const val FLUTTER_ENGINE_ID = "famradar_engine"
+        private const val TAG = "MainActivity"
+        var locationEventSink: EventChannel.EventSink? = null
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        Log.d(TAG, "Configuring FlutterEngine")
 
-        // Initialize NativeBridge for storage channel
+        // Armazenar FlutterEngine no cache
+        FlutterEngineCache.getInstance().put(FLUTTER_ENGINE_ID, flutterEngine)
+        Log.d(TAG, "FlutterEngine cached with ID: $FLUTTER_ENGINE_ID")
+
+        // Configurar EventChannel para localização
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "avs.com.famradar/location_events")
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    locationEventSink = events
+                    Log.d(TAG, "Location EventChannel listener set, eventSink: ${events != null}")
+                }
+                override fun onCancel(arguments: Any?) {
+                    locationEventSink = null
+                    Log.d(TAG, "Location EventChannel listener cancelled")
+                }
+            })
+
+        // Inicializar NativeBridge para canal de armazenamento
         val nativeBridge = NativeBridge()
         nativeBridge.onAttachedToEngine(applicationContext, this, flutterEngine)
 
-        // Invitations channel
+        // Canal de convites
         val invitationManager = InvitationManager(applicationContext)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "avs.com.famradar/invitations").setMethodCallHandler { call, result ->
             when (call.method) {
@@ -51,7 +77,7 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        // WebRTC channel
+        // Canal WebRTC
         val webRTCManager = WebRTCManager(applicationContext)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "avs.com.famradar/webrtc_events").setMethodCallHandler { call, result ->
             when (call.method) {
@@ -90,15 +116,21 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        // Geofence channel
+        // Canal de geofence
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "avs.com.famradar/geofence_events").setMethodCallHandler { _, _ ->
             // Handled by GeofenceBroadcastReceiver
         }
 
-        // Initialize channels for services
+        // Inicializar canais para serviços
         GeofenceBroadcastReceiver.channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "avs.com.famradar/geofence_events")
-        LocationForegroundService.channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "avs.com.famradar/geofence_events")
         WebRTCManager.channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "avs.com.famradar/webrtc_events")
         InvitationManager.channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "avs.com.famradar/invitations")
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        FlutterEngineCache.getInstance().remove(FLUTTER_ENGINE_ID)
+        locationEventSink = null
+        Log.d(TAG, "FlutterEngine removed from cache")
     }
 }

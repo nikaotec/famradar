@@ -1,4 +1,3 @@
-// android/app/src/main/kotlin/avs/com/famradar/LocationForegroundService.kt
 package avs.com.famradar
 
 import android.app.Notification
@@ -11,11 +10,9 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.google.android.gms.location.*
-import io.flutter.plugin.common.MethodChannel
 
 class LocationForegroundService : Service() {
     companion object {
-        var channel: MethodChannel? = null
         private const val CHANNEL_ID = "FamRadarLocationChannel"
         private const val NOTIFICATION_ID = 1
         private const val TAG = "LocationService"
@@ -27,6 +24,7 @@ class LocationForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        Log.d(TAG, "LocationForegroundService created")
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         createNotificationChannel()
         val notification = buildNotification()
@@ -62,39 +60,46 @@ class LocationForegroundService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("FamRadar Location Tracking")
             .setContentText("Tracking your location to keep your family safe.")
-            .setSmallIcon(R.mipmap.ic_launcher) // Replace with your icon
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
     }
 
     private fun startLocationUpdates() {
         val locationRequest = LocationRequest.create().apply {
-            interval = 10000 // 10 seconds
-            fastestInterval = 5000 // 5 seconds
-            priority = LocationRequest.PRIORITY_HIGH_ACCURACY
+            interval = 10000 // 10 segundos
+            fastestInterval = 5000 // 5 segundos
+            priority = Priority.PRIORITY_HIGH_ACCURACY
         }
 
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult) {
+                Log.d(TAG, "Location result received, locations: ${locationResult.locations.size}")
                 for (location in locationResult.locations) {
-                    Log.d(TAG, "Location for $userId: ${location.latitude}, ${location.longitude}")
-                    channel?.invokeMethod("onLocationUpdate", mapOf(
+                    val event = mapOf(
                         "userId" to userId,
                         "latitude" to location.latitude,
                         "longitude" to location.longitude,
-                        "timestamp" to System.currentTimeMillis()
-                    ))
+                        "timestamp" to (System.currentTimeMillis() / 1000).toInt()
+                    )
+                    Log.d(TAG, "Sending location update: $event, eventSink: ${MainActivity.locationEventSink != null}")
+                    MainActivity.locationEventSink?.success(event) ?: Log.w(TAG, "EventSink is null, event not sent")
                 }
             }
         }
 
         try {
-            fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, null)
+            if (LocationPermissionHelper.hasForegroundLocationPermissions(this)) {
+                Log.d(TAG, "Location permissions granted, requesting updates")
+                fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, mainLooper)
+            } else {
+                Log.e(TAG, "Location permission missing")
+                MainActivity.locationEventSink?.error("PERMISSION_DENIED", "Location permission missing", null)
+                stopSelf()
+            }
         } catch (e: SecurityException) {
-            Log.e(TAG, "Location permission missing: ${e.message}")
-            channel?.invokeMethod("onError", mapOf(
-                "error" to "Location permission missing"
-            ))
+            Log.e(TAG, "SecurityException: ${e.message}")
+            MainActivity.locationEventSink?.error("PERMISSION_DENIED", "Location permission missing: ${e.message}", null)
             stopSelf()
         }
     }

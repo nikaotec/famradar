@@ -1,4 +1,3 @@
-// android/app/src/main/kotlin/avs/com/famradar/NativeBridge.kt
 package avs.com.famradar
 
 import android.content.Context
@@ -20,7 +19,11 @@ class NativeBridge : MethodChannel.MethodCallHandler {
         sharedPreferences = context.getSharedPreferences("FamRadarPrefs", Context.MODE_PRIVATE)
 
         // Initialize storage channel
-        storageChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "avs.com.famradar/storage")
+        storageChannel =
+                MethodChannel(
+                        flutterEngine.dartExecutor.binaryMessenger,
+                        "avs.com.famradar/storage"
+                )
         storageChannel.setMethodCallHandler(this)
     }
 
@@ -52,13 +55,15 @@ class NativeBridge : MethodChannel.MethodCallHandler {
                 }
             }
             "getUserData" -> {
-                val userData = mapOf(
-                    "id" to sharedPreferences.getString("userId", null),
-                    "name" to sharedPreferences.getString("name", null),
-                    "email" to sharedPreferences.getString("email", null),
-                    "phone" to sharedPreferences.getString("phone", null),
-                    "photoUrl" to sharedPreferences.getString("photoUrl", null)
-                ).filterValues { it != null }
+                val userData =
+                        mapOf(
+                                        "id" to sharedPreferences.getString("userId", null),
+                                        "name" to sharedPreferences.getString("name", null),
+                                        "email" to sharedPreferences.getString("email", null),
+                                        "phone" to sharedPreferences.getString("phone", null),
+                                        "photoUrl" to sharedPreferences.getString("photoUrl", null)
+                                )
+                                .filterValues { it != null }
                 result.success(userData)
             }
             "saveLocationSettings" -> {
@@ -78,15 +83,18 @@ class NativeBridge : MethodChannel.MethodCallHandler {
                 }
             }
             "getLocationSettings" -> {
-                result.success(mapOf("interval" to sharedPreferences.getInt("locationInterval", 60000)))
+                result.success(
+                        mapOf("interval" to sharedPreferences.getInt("locationInterval", 60000))
+                )
             }
             "startLocationService" -> {
                 if (checkPermissions()) {
                     val userId = call.argument<String>("userId")
-                    val intent = Intent(context, LocationForegroundService::class.java).apply {
-                        if (userId != null) putExtra("userId", userId)
-                    }
-                    context.startService(intent) // Line 83
+                    val intent =
+                            Intent(context, LocationForegroundService::class.java).apply {
+                                if (userId != null) putExtra("userId", userId)
+                            }
+                    context.startService(intent)
                     result.success(null)
                 } else {
                     result.error("PERMISSION_DENIED", "Required permissions not granted", null)
@@ -94,7 +102,7 @@ class NativeBridge : MethodChannel.MethodCallHandler {
             }
             "stopLocationService" -> {
                 val intent = Intent(context, LocationForegroundService::class.java)
-                context.stopService(intent) // Line 90
+                context.stopService(intent)
                 result.success(null)
             }
             else -> result.notImplemented()

@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:famradar/modules/auth/interfaces/auth_service_interface.dart';
 import 'package:famradar/modules/geofence/interfaces/geofenceP_service_interface.dart';
+import 'package:famradar/modules/geofence/models.dart/geofence_model.dart';
+import 'package:famradar/modules/geofence/screens/GeofenceScreen.dart';
 import 'package:famradar/modules/webrtc/interfaces/webrtc_service_interface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,7 +13,6 @@ import 'package:provider/provider.dart';
 import '../../../providers/app_provider.dart';
 import '../../../models/location_model.dart';
 import '../../interfaces/storage_service_interface.dart';
-import 'dart:async';
 
 class MapScreen extends StatefulWidget {
   final StorageServiceInterface storageService;
@@ -35,6 +38,9 @@ class _MapScreenState extends State<MapScreen> {
   final _mapController = MapController();
   LatLng? _initialPosition;
   StreamSubscription<dynamic>? _eventSubscription;
+  bool _isLoading = true;
+  List<GeofenceModel> _geofences = [];
+  LatLng? _lastMarkerPosition;
 
   @override
   void initState() {
@@ -43,6 +49,20 @@ class _MapScreenState extends State<MapScreen> {
     _setInitialPosition();
     _startLocationService();
     _listenForEvents();
+    _loadGeofences();
+  }
+
+  Future<void> _loadGeofences() async {
+    try {
+      final geofences = await widget.geofenceService.getGeofences();
+      setState(() {
+        _geofences = geofences;
+        print('Geofences loaded: ${geofences.length}');
+      });
+    } catch (e) {
+      print('Error loading geofences: $e');
+      context.read<AppProvider>().showError('Erro ao carregar geofences: $e');
+    }
   }
 
   void _setInitialPosition() {
@@ -50,22 +70,34 @@ class _MapScreenState extends State<MapScreen> {
     final userLocations = context.read<AppProvider>().userLocations;
     if (user != null && userLocations.containsKey(user.id)) {
       final userLocation = userLocations[user.id]!;
-      _initialPosition = LatLng(userLocation.position.latitude, userLocation.position.longitude);
-      print('Initial position set from AppProvider: ${_initialPosition.toString()}');
+      _initialPosition = LatLng(
+          userLocation.position.latitude, userLocation.position.longitude);
+      _lastMarkerPosition = _initialPosition;
+      print(
+          'Initial position set from AppProvider: ${_initialPosition.toString()}');
+      setState(() {
+        _isLoading = false;
+      });
     } else {
-      // Fallback para última localização conhecida via NativeBridge
       platform.invokeMethod('getUserData').then((userData) {
-        if (userData is Map && userData.containsKey('lastLatitude') && userData.containsKey('lastLongitude')) {
+        if (userData is Map &&
+            userData.containsKey('lastLatitude') &&
+            userData.containsKey('lastLongitude')) {
           setState(() {
             _initialPosition = LatLng(
               (userData['lastLatitude'] as num).toDouble(),
               (userData['lastLongitude'] as num).toDouble(),
             );
-            print('Initial position set from NativeBridge: ${_initialPosition.toString()}');
+            _lastMarkerPosition = _initialPosition;
+            _isLoading = false;
+            print(
+                'Initial position set from NativeBridge: ${_initialPosition.toString()}');
           });
         } else {
           setState(() {
             _initialPosition = LatLng(0.0, 0.0);
+            _lastMarkerPosition = _initialPosition;
+            _isLoading = false;
             print('Initial position set to fallback: (0.0, 0.0)');
           });
         }
@@ -73,6 +105,8 @@ class _MapScreenState extends State<MapScreen> {
         print('Error fetching last location: $e');
         setState(() {
           _initialPosition = LatLng(0.0, 0.0);
+          _lastMarkerPosition = _initialPosition;
+          _isLoading = false;
         });
       });
     }
@@ -90,12 +124,13 @@ class _MapScreenState extends State<MapScreen> {
       }
     } on PlatformException catch (e) {
       print('Error starting location service: ${e.message}');
-      context.read<AppProvider>().showError('Erro ao iniciar serviço de localização: ${e.message}');
+      context
+          .read<AppProvider>()
+          .showError('Erro ao iniciar serviço de localização: ${e.message}');
     }
   }
 
   void _listenForEvents() {
-    // Atrasar para garantir que o serviço esteja ativo
     Future.delayed(Duration(seconds: 2), () {
       print('Setting up EventChannel listener');
       _eventSubscription = eventChannel.receiveBroadcastStream().listen(
@@ -109,29 +144,46 @@ class _MapScreenState extends State<MapScreen> {
                   map['latitude'] is double &&
                   map['longitude'] is double &&
                   map['timestamp'] is int) {
+                final newPosition = LatLng(
+                    map['latitude'] as double, map['longitude'] as double);
                 context.read<AppProvider>().handleLocationUpdate(
                       userId: (map['userId'] as String?) ?? '',
                       latitude: map['latitude'] as double,
                       longitude: map['longitude'] as double,
                       timestamp: map['timestamp'] as int,
                     );
-                print('Location update received: ${map['latitude']}, ${map['longitude']}');
-                // Atualizar última localização no SharedPreferences
+                print(
+                    'Location update received: ${map['latitude']}, ${map['longitude']}');
                 platform.invokeMethod('saveUserData', {
                   'lastLatitude': map['latitude'],
                   'lastLongitude': map['longitude'],
                 });
-              } else if (map.containsKey('type') && map.containsKey('geofenceId')) {
+                // Suavizar movimentação
+                if (_lastMarkerPosition != null) {
+                  _animateMarker(newPosition);
+                } else {
+                  _lastMarkerPosition = newPosition;
+                  _mapController.move(newPosition, 14);
+                }
+                setState(() {
+                  _isLoading = false;
+                });
+              } else if (map.containsKey('type') &&
+                  map.containsKey('geofenceId')) {
                 context.read<AppProvider>().handleGeofenceEvent(
                       type: map['type'] as String,
                       geofenceId: map['geofenceId'] as String,
                       userId: map['userId'] as String?,
                       timestamp: (map['timestamp'] as num).toInt(),
                     );
-                print('Geofence event received: ${map['type']}, ${map['geofenceId']}');
+                print(
+                    'Geofence event received: ${map['type']}, ${map['geofenceId']}');
+                _loadGeofences(); // Atualizar geofences após evento
               } else if (map.containsKey('errorMessage')) {
                 print('Error event received: ${map['errorMessage']}');
-                context.read<AppProvider>().showError(map['errorMessage'] as String);
+                context
+                    .read<AppProvider>()
+                    .showError(map['errorMessage'] as String);
               } else {
                 print('Invalid event format: $map');
               }
@@ -140,17 +192,45 @@ class _MapScreenState extends State<MapScreen> {
             }
           } catch (e, stackTrace) {
             print('Error processing event: $e\n$stackTrace');
-            context.read<AppProvider>().showError('Erro ao processar atualização: $e');
+            context
+                .read<AppProvider>()
+                .showError('Erro ao processar atualização: $e');
           }
         },
         onError: (error, stackTrace) {
           print('EventChannel error: $error\n$stackTrace');
-          context.read<AppProvider>().showError('Erro no canal de eventos: $error');
+          context
+              .read<AppProvider>()
+              .showError('Erro no canal de eventos: $error');
         },
         onDone: () {
           print('EventChannel stream closed');
         },
       );
+    });
+  }
+
+  void _animateMarker(LatLng newPosition) {
+    const steps = 10;
+    final deltaLat =
+        (newPosition.latitude - _lastMarkerPosition!.latitude) / steps;
+    final deltaLng =
+        (newPosition.longitude - _lastMarkerPosition!.longitude) / steps;
+    var step = 0;
+
+    Timer.periodic(Duration(milliseconds: 50), (timer) {
+      if (step < steps) {
+        final interpolatedPosition = LatLng(
+          _lastMarkerPosition!.latitude + deltaLat * step,
+          _lastMarkerPosition!.longitude + deltaLng * step,
+        );
+        _mapController.move(interpolatedPosition, 14);
+        step++;
+      } else {
+        _mapController.move(newPosition, 14);
+        _lastMarkerPosition = newPosition;
+        timer.cancel();
+      }
     });
   }
 
@@ -175,27 +255,36 @@ class _MapScreenState extends State<MapScreen> {
     final markers = userLocation != null
         ? [
             Marker(
-              point: LatLng(userLocation.position.latitude, userLocation.position.longitude),
+              point: LatLng(userLocation.position.latitude,
+                  userLocation.position.longitude),
               width: 50,
               height: 50,
               child: CircleAvatar(
                 radius: 25,
                 backgroundImage: user?.photoUrl != null
                     ? NetworkImage(user!.photoUrl!)
-                    : const AssetImage('assets/images/default_avatar.png') as ImageProvider,
+                    : const AssetImage('assets/images/default_avatar.png')
+                        as ImageProvider,
                 backgroundColor: Colors.blue.shade100,
               ),
             ),
           ]
         : <Marker>[];
 
-    // Atualizar câmera do mapa se a localização mudar
-    if (userLocation != null) {
-      _mapController.move(
-        LatLng(userLocation.position.latitude, userLocation.position.longitude),
-        14,
-      );
-    }
+    // Criar círculos para geofences
+    final geofenceCircles = _geofences
+        .map((geofence) => CircleLayer(
+              circles: [
+                CircleMarker(
+                  point: LatLng(geofence.latitude, geofence.longitude),
+                  radius: geofence.radius,
+                  color: Colors.blue.shade200.withOpacity(0.3),
+                  borderColor: Colors.blue.shade900,
+                  borderStrokeWidth: 2,
+                ),
+              ],
+            ))
+        .toList();
 
     return Scaffold(
       body: SafeArea(
@@ -217,15 +306,24 @@ class _MapScreenState extends State<MapScreen> {
                 ),
                 children: [
                   TileLayer(
-                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    urlTemplate:
+                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                     userAgentPackageName: 'avs.com.famradar',
                     errorTileCallback: (tile, error, stackTrace) {
                       print('Tile loading error: $error\n$stackTrace');
                     },
                   ),
+                  ...geofenceCircles,
                   MarkerLayer(markers: markers),
                 ],
               ),
+              if (_isLoading)
+                Center(
+                  child: CircularProgressIndicator(
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(Colors.blue.shade900),
+                  ),
+                ),
               Positioned(
                 top: 16,
                 left: 16,
@@ -251,6 +349,54 @@ class _MapScreenState extends State<MapScreen> {
                       color: Colors.blue.shade900,
                     ),
                   ),
+                ),
+              ),
+              Positioned(
+                bottom: 16,
+                right: 16,
+                child: Column(
+                  children: [
+                    FloatingActionButton(
+                      mini: true,
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => GeofenceScreen(
+                              geofenceService: widget.geofenceService,
+                              initialPosition:
+                                  _initialPosition ?? LatLng(0.0, 0.0),
+                            ),
+                          ),
+                        ).then((_) => _loadGeofences());
+                      },
+                      child: Icon(Icons.add_location),
+                      backgroundColor: Colors.blue.shade900,
+                      foregroundColor: Colors.white,
+                    ),
+                    SizedBox(height: 8),
+                    FloatingActionButton(
+                      mini: true,
+                      onPressed: () {
+                        _mapController.move(
+                            _mapController.camera.center, _mapController.camera.zoom + 1);
+                      },
+                      child: Icon(Icons.zoom_in),
+                      backgroundColor: Colors.blue.shade900,
+                      foregroundColor: Colors.white,
+                    ),
+                    SizedBox(height: 8),
+                    FloatingActionButton(
+                      mini: true,
+                      onPressed: () {
+                        _mapController.move(
+                            _mapController.camera.center, _mapController.camera.zoom - 1);
+                      },
+                      child: Icon(Icons.zoom_out),
+                      backgroundColor: Colors.blue.shade900,
+                      foregroundColor: Colors.white,
+                    ),
+                  ],
                 ),
               ),
             ],

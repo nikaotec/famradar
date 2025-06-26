@@ -1,0 +1,14 @@
+/home/venancio/Documentos/projetos/flutter/famradar/android/app/src/main/kotlin/avs/com/famradar/LocationForegroundService.kt
+/home/venancio/Documentos/projetos/flutter/famradar/android/app/src/main/kotlin/avs/com/famradar/NativeBridge.kt
+/home/venancio/Documentos/projetos/flutter/famradar/android/app/src/main/kotlin/avs/com/famradar/WebRTCManager.kt
+/home/venancio/Documentos/projetos/flutter/famradar/android/app/src/main/kotlin/avs/com/famradar/GeofenceBroadcastReceiver.kt
+/home/venancio/Documentos/projetos/flutter/famradar/android/app/src/main/kotlin/avs/com/famradar/BootReceiver.kt
+/home/venancio/Documentos/projetos/flutter/famradar/android/app/src/main/kotlin/avs/com/famradar/LocationService.kt
+/home/venancio/Documentos/projetos/flutter/famradar/android/app/src/main/kotlin/avs/com/famradar/LocationWebRTCService.kt
+/home/venancio/Documentos/projetos/flutter/famradar/android/app/src/main/kotlin/avs/com/famradar/LocationPermissionHelper.kt
+/home/venancio/Documentos/projetos/flutter/famradar/android/app/src/main/kotlin/avs/com/famradar/GeofenceHelper.kt
+/home/venancio/Documentos/projetos/flutter/famradar/android/app/src/main/kotlin/avs/com/famradar/NotificationHelper.kt
+/home/venancio/Documentos/projetos/flutter/famradar/android/app/src/main/kotlin/avs/com/famradar/LocalNotificationHelper.kt
+/home/venancio/Documentos/projetos/flutter/famradar/android/app/src/main/kotlin/avs/com/famradar/SdpObserverAdapter.kt
+/home/venancio/Documentos/projetos/flutter/famradar/android/app/src/main/kotlin/avs/com/famradar/InvitationManager.kt
+/home/venancio/Documentos/projetos/flutter/famradar/android/app/src/main/kotlin/avs/com/famradar/MainActivity.kt
